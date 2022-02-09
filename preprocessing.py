@@ -135,7 +135,7 @@ def fully_preprocess_eeg(patient_number, weaning = False, overwrite = False):
 def open_preprocessed_epoched(patient_number, weaning = False):
 
     def file_dir(patient_number, status, suffix = None):
-        common_dir = "C:/Users/igorc/OneDrive/Desktop/POLI/UCLouvain/3º Semestre/Thesis/Data/preprocessed/"
+        common_dir = "C:/code_thesis/brain_connectivity_epilepsy/preprocessed/"
         if suffix is not None:
             dir = f'PAT{patient_number}_{suffix}_{status}-epo.fif'
         else:

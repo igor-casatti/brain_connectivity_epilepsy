@@ -2,6 +2,7 @@ import numpy as np
 import mne
 import scot
 import mne_connectivity as mnecon
+import scipy
 
 
 """
@@ -21,7 +22,8 @@ class EpochConnection(object):
         """
 
         self.epoch_data = epoch_data
-        self.sfreq = sfreq
+        self.sfreq = int(sfreq)
+        self.Connec = None
     
 
     def _MVAR_order_estimation(self, max_order=30, criterion=None):
@@ -67,7 +69,7 @@ class EpochConnection(object):
         -----------
         RETURNS
         -----------
-        self
+        None
         """
 
         if model_order is None:
@@ -76,7 +78,6 @@ class EpochConnection(object):
         self.MVAR = scot.var.VAR(model_order=model_order)
         self.MVAR.fit(data=self.epoch_data)
 
-        return self
 
     def integrated_connection_measure(self, measure_name, frequency_band = None, nfft = None):
         """
@@ -99,23 +100,50 @@ class EpochConnection(object):
         """
 
         if nfft is None:
-            nfft = (self.sfreq) * 2
+            nfft = self.sfreq
 
         MVAR_model = self.MVAR
-        Connec = scot.Connectivity(b = MVAR_model.coef, c = MVAR_model.rescov, nfft = nfft)
+
+        if self.Connec is None:
+            self.connect_build(nfft=nfft)
+            #self.Connec = scot.Connectivity(b = MVAR_model.coef, c = MVAR_model.rescov, nfft = nfft)
 
         if measure_name == 'dDTF':
-            f_measure = Connec.dDTF()
+            f_measure = self.Connec.dDTF()
         elif measure_name == 'DTF':
-            f_measure = Connec.DTF()
+            f_measure = self.Connec.DTF()
         elif measure_name == 'PDC':
-            f_measure = Connec.PDC()
+            f_measure = self.Connec.PDC()
         
         if frequency_band is not None: # Integrate on an specific interval
             freq_resolution = (self.sfreq/2)/(nfft - 1)
             low, high = frequency_band[0], frequency_band[1]
             i, j = int(low/freq_resolution), int(high/freq_resolution)
-            return np.sum(f_measure[:,:,i:j+1], axis=2)
+
+            x = np.linspace(0, self.sfreq/2, nfft)
+            #x_i = x[i:j+1]
+
+            #return np.sum(f_measure[:,:,i:j+1], axis=2)
+            return scipy.integrate.simps(y=f_measure[:,:,i:j+1], x=x[i:j+1])
         
         elif frequency_band is None:
             return np.sum(f_measure, axis=2)
+    
+    def connect_build(self, nfft):
+
+        """
+        Builds the ScoT connectivity class
+
+        -----------
+        PARAMETERS
+        -----------
+        nfft (int) : number of frequency bins to use on discretization
+
+        -----------
+        RETURNS
+        -----------
+        None
+        """
+
+        MVAR_model = self.MVAR
+        self.Connec = scot.Connectivity(b = MVAR_model.coef, c = MVAR_model.rescov, nfft = nfft)
