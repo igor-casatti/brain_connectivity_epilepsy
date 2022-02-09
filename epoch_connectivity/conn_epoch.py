@@ -119,7 +119,3 @@ class EpochConnection(object):
         
         elif frequency_band is None:
             return np.sum(f_measure, axis=2)
-
-        
-
-
