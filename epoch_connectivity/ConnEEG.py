@@ -19,8 +19,10 @@ class EEG_DirectedConnection(object):
 
     def __init__(self, epoched_eeg):
         #self.epoched_eeg = epoched_eeg
-        self.ch_names = only_EEG_channels(epoched_eeg.ch_names)
+        #self.ch_names = only_EEG_channels(epoched_eeg.ch_names)
+        self.ch_names = epoched_eeg.ch_names
         self.sfreq = epoched_eeg.info['sfreq']
+        self.info = epoched_eeg.info
 
         self.epoch_matrix = epoched_eeg.get_data(picks=['eeg'])
         self.n_epochs = len(self.epoch_matrix)
@@ -70,7 +72,7 @@ class EEG_DirectedConnection(object):
         connectivity matrix
         """
         if nfft is None:
-            nfft = 2 * self.sfreq
+            nfft = int(2 * self.sfreq)
 
         self.conn = scot.Connectivity(b = self.coefs, c = self.rescov, nfft=nfft)
 
@@ -93,17 +95,38 @@ class EEG_DirectedConnection(object):
         integrated_measure = scipy.integrate.simps(y=measure[:,:,i:j+1], x=x[i:j+1])
         
         return integrated_measure
-        
-#TODO https://matplotlib.org/stable/gallery/images_contours_and_fields/image_annotated_heatmap.html
+    
+    def plot_connectivity_hmp(self, measure = 'dDTF', frequency_band = None):
 
+        con_matrix = self.integrated_measure_epochs(measure_name=measure, frequency_band = frequency_band)
+
+        info = self.info
+        ch_names = self.ch_names
+
+        channel_indices = mne.pick_types(info, eeg=True)
+        ch_eeg_names = [ch_names[index] for index in channel_indices]
+
+        ch_eeg_names = only_EEG_channels(ch_eeg_names)
+
+        ax = sns.heatmap(con_matrix, linewidths=.5, cmap='viridis', xticklabels=ch_eeg_names, yticklabels=ch_eeg_names)
+
+        if frequency_band is not None:
+            title = measure + ' on frequency range ' + '[' + str(frequency_band[0]) + ', ' + str(frequency_band[1]) + ']'
+        else:
+            title = measure + 'on broadband'
+
+        ax.set_title(title)
+        plt.show()
+        
 #TODO save function
 # pickle.dump(myConn, open( "save.p", "wb" ))
 # myConnLoaded = pickle.load( open( "save.p", "rb" ) )
 
 #TODO another plot (?) <- for later
 
-#TODO wPLI https://mne.tools/mne-connectivity/stable/auto_examples/cwt_sensor_connectivity.html
+#TODO bigger class integrating both measures
 
+#TODO option to make diagonals equal to NaN on heatmaps
 
 class EEG_SpectralConnection(object):
     
@@ -123,15 +146,31 @@ class EEG_SpectralConnection(object):
         con = mnecon.spectral_connectivity_epochs(data=self.epoched_eeg, method=measure, mode='multitaper',
                                               fmin=f_min, fmax=f_max, faverage=True, verbose=False)
         
-        con_matrix = con.get_data(output='dense')[:,:,0]
+        con_matrix = con.get_data(output='dense')[:,:,0] + np.transpose(con.get_data(output='dense')[:,:,0])
 
         # Get only channels that are EEG:
         channel_indices = mne.pick_types(self.epoched_eeg.info, eeg=True) # Indices of EEG channels
         # Return the connective matrix just with the EEG channels connectivity
         return con_matrix[np.ix_(channel_indices, channel_indices)]
     
-    def plot_spec_connectivity_hmp(self, measure = 'wpli', frequency_band = None):
+    def plot_connectivity_hmp(self, measure = 'wpli', frequency_band = None):
         con_matrix = self.spec_connectivity(measure=measure, frequency_band=frequency_band)
-        ax = sns.heatmap(con_matrix, linewidth=0.1)
+
+        info = self.epoched_eeg.info
+        ch_names = self.epoched_eeg.ch_names
+
+        channel_indices = mne.pick_types(info, eeg=True)
+        ch_eeg_names = [ch_names[index] for index in channel_indices]
+
+        ch_eeg_names = only_EEG_channels(ch_eeg_names)
+
+        ax = sns.heatmap(con_matrix, linewidths=.5, cmap='viridis', xticklabels=ch_eeg_names, yticklabels=ch_eeg_names)
+
+        if frequency_band is not None:
+            title = measure + ' on frequency range ' + '[' + str(frequency_band[0]) + ', ' + str(frequency_band[1]) + ']'
+        else:
+            title = measure + 'on broadband'
+
+        ax.set_title(title)
         plt.show()
         
