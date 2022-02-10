@@ -130,7 +130,7 @@ class EEG_SpectralConnection(object):
         # Return the connective matrix just with the EEG channels connectivity
         return con_matrix[np.ix_(channel_indices, channel_indices)]
     
-    def spec_connectivity(self, measure = 'wpli', frequency_band = None):
+    def plot_spec_connectivity_hmp(self, measure = 'wpli', frequency_band = None):
         con_matrix = self.spec_connectivity(measure=measure, frequency_band=frequency_band)
         ax = sns.heatmap(con_matrix, linewidth=0.1)
         plt.show()
