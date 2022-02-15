@@ -11,6 +11,24 @@ import statsmodels.tsa.vector_ar.var_model as smvar
 
 class EEG_DirectedConnection(object):
 
+    """
+    Class to fit MVAR models on epochs and obtain directed connectivity measures.
+    Supported measures: see Scot documentation.
+
+    -----------
+    PARAMETERS
+    -----------
+    epoched_eeg (mne epoched EEG) : the epoched EEG as MNE format
+
+    -----------
+    METHODS
+    -----------
+    self.fit_MVAR_on_epochs(self, model_order=20, epoch_cv_division=5, get_REV = False)
+    self.integrated_measure_epochs(self, measure_name, frequency_band = None, nfft = None)
+    self.plot_connectivity_hmp(self, measure = 'dDTF', frequency_band = None, hide_diag = True)
+
+    """
+
     def __init__(self, epoched_eeg):
         self.epoched_eeg = epoched_eeg
         #self.ch_names = only_EEG_channels(epoched_eeg.ch_names)
@@ -21,16 +39,22 @@ class EEG_DirectedConnection(object):
         self.epoch_matrix = epoched_eeg.get_data(picks=['eeg'])
         self.n_epochs = len(self.epoch_matrix)
     
-    def fit_MVAR_on_epochs(self, ic = 'aic'):
+    def fit_MVAR_on_epochs(self, model_order=20, epoch_cv_division=5, get_REV = False):
 
         """
-        Fit on MVAR on each epoch. Each MVAR is fitted with the Statsmodel library.
-        For each epoch the best model order is estimated using the information criteria specified.
+        Fit on MVAR on each epoch. Each MVAR is fitted with the Scot Library.
+        Each epoch is subdivided into 5 epoch_cv_divisions for the Scot optimization.
+        The model_order is fixed and the MVAR is fitted with a ridge regression
+        and the penalty term is optimized. Also, it is possivle to get the
+        Relative Error Variace for each epoch (get_REV = True).
 
         -----------
         PARAMETERS
         -----------
-        ic (str) : Information criteria to be used for the estimation of the model orders
+        model_order (int) : Model order to be used, it is important that the model order
+          is big enough, since the penalty term will be optimized
+        epoch_cv_division (int) : subdivision of the epochs to optimize the penalty term
+        get_REV (bool) : If true calculate the REV for each epoch
 
         -----------
         RETURNS
@@ -40,19 +64,60 @@ class EEG_DirectedConnection(object):
 
         coefficients = []
         rescovs = []
+        self.REV = []
 
         for epoch in range(self.n_epochs):               # for each epoch
             b = self.epoch_matrix[epoch]                 # get the data of the epoch
+            _, n_samples = np.shape(b)                   # number of samples
+            to_remove = n_samples % epoch_cv_division    # number of samples to be removed to make n_samples a multiple of ecd
 
-            epoch_MVAR = smvar.VAR(endog=b.T)            # MVAR for current epoch
-            results = epoch_MVAR.fit(ic=ic, trend='n')   # Fit MVAR on current epoch
-        
-            coefficients.append(results.params.T)        # Append the current coefficients to the coefficients matrix
-            rescovs.append(results.sigma_u)
-        
-        self.coefficients = coefficients
-        self.rescovs = rescovs
+            b_ = np.delete(b, 1, axis=1)
+            b_ = np.array(np.split(b_, epoch_cv_division, axis=1)) # Split the epoch in ecd parts
 
+            varx = scot.var.VAR(model_order=model_order)            # MVAR for current epoch
+            result = scot.varica.mvarica(x=b_, var=varx, reducedim='no_pca', optimize_var=True, varfit='ensemble')
+        
+            coefficients.append(result.a.coef)        # Append the current coefficients to the coefficients matrix
+            rescovs.append(result.a.rescov)
+
+            if get_REV:
+                ep_REV = self._fit_quality_(epoch_data=b_, model_order=model_order, varx=varx)
+                self.REV.append(ep_REV)
+        
+        self.coefficients = np.array(coefficients)
+        self.rescovs = np.array(rescovs)
+        self.REV = np.array(self.REV)
+
+    def _fit_quality_(self, epoch_data, model_order, varx):
+        """
+        Auxiliar method to calculate the REV for the current epoch
+
+        -----------
+        PARAMETERS
+        -----------
+        epoch_data (numpy array) : Array containing the current epoch subdivided.
+        model_order (int) : Model order used to fit the MVAR model.
+        varx (scot var object) : Var object used in the fitting
+
+        -----------
+        RETURNS
+        -----------
+        REV (numpy array)
+
+        -----------
+        RETURNS
+        -----------
+        [1] THE ELECTROENCEPHALOGRAM AND THE ADAPTIVE AUTOREGRESSIVE MODEL: THEORY AND APPLICATIONS. Alois Schlögl. pp 18 - 19.
+        """
+
+        r = epoch_data[:,:,model_order:] - varx.predict(epoch_data)[:,:,model_order:]
+        r_conc = np.concatenate((r), axis=1)
+        testing_conc = np.concatenate((epoch_data[:,:,model_order:]), axis=1)
+        MSE = np.mean((r_conc**2), axis=0)
+        MSS = np.mean((testing_conc**2), axis=0)
+        REV = MSE/MSS
+
+        return REV
 
     def integrated_measure_epochs(self, measure_name, frequency_band = None, nfft = None):
         
@@ -72,7 +137,9 @@ class EEG_DirectedConnection(object):
         -----------
         RETURNS
         -----------
-        connectivity matrix
+        connectivity matrix (numpy array) : a matrix of shape (m, m). The first dimension is
+          the sink, the second dimension is the source.
+
         """
 
         if nfft is None:
@@ -90,26 +157,45 @@ class EEG_DirectedConnection(object):
         for epoch in range(self.n_epochs):
             b, rescov = self.coefficients[epoch], self.rescovs[epoch]
 
-            #b_mean = np.mean(b, axis=1)        # Subtract the temporal mean from each channel
-            #b_mean = b_mean.reshape((19,1))    # Blinowska and Kaminski p. 378
-            #b = b - b_mean
-
             con = scot.Connectivity(b = b, c = rescov, nfft=nfft)
             # Get the connectivity measure as a function of frequency for the current epoch
             epoch_connec = getattr(con, measure_name)()
             # Array containing the frequency intervals
             x = np.linspace(0, self.sfreq/2, nfft)
             # Calculate the integrated connectivity measure to the current epoch on the frequency band
-            integrated_epoch_measure = scipy.integrate.simps(y=epoch_connec[:,:,i:j+1], x=x[i:j+1])
+            #integrated_epoch_measure = scipy.integrate.simps(y=epoch_connec[:,:,i:j+1], x=x[i:j+1])
+            integrated_epoch_measure = np.mean(epoch_connec[:,:,i:j+1], axis=2)
             # Append the current epoch measure to the array containing all the measures
             integrated_measure.append(integrated_epoch_measure)
         
         integrated_measure = np.array(integrated_measure)
         return np.mean(integrated_measure, axis=0) # Return the mean of the integrated measure over all epochs
 
-    def plot_connectivity_hmp(self, measure = 'dDTF', frequency_band = None):
+    def plot_connectivity_hmp(self, measure = 'dDTF', frequency_band = None, hide_diag = True):
+
+        """
+        Plot a heatmap
+
+        -----------
+        PARAMETERS
+        -----------
+        measure_name (str) : name of the measure to be used {'dDTF', 'DTF', 'PDC'}
+        frequency_band (list) : frequency band where the measure will be integrated if None
+          then the measure is integrated over all the frequencies (broadband value) the list
+          has the format [lower_bound, higher_bound]
+        nfft (int) : number of frequency bins on the metrics resultant matrix if None then
+          nfft = 2 * sfreq
+
+        -----------
+        RETURNS
+        -----------
+        connectivity matrix
+        """
 
         con_matrix = self.integrated_measure_epochs(measure_name=measure, frequency_band = frequency_band)
+
+        if hide_diag:
+            np.fill_diagonal(con_matrix, np.nan, wrap=False)
 
         info = self.info
         ch_names = self.ch_names
@@ -131,13 +217,26 @@ class EEG_DirectedConnection(object):
 
 
 class EEG_SpectralConnection(object):
+
+    """
+    Class to get the spectral connection between the channels.
+    Supported measures: see mne_connectivity documentation
+
+    -----------
+    PARAMETERS
+    -----------
+    epoched_eeg (mne epoched EEG) : the epoched EEG as MNE format
+
+    -----------
+    METHODS
+    -----------
+    self.spec_connectivity(self, measure = 'wpli', frequency_band = None)
+    self.plot_connectivity_hmp(self, measure = 'wpli', frequency_band = None)
+
+    """
     
     def __init__(self, epoched_eeg):
         self.epoched_eeg = epoched_eeg
-        #self.ch_names = only_EEG_channels(epoched_eeg.ch_names)
-        #self.sfreq = epoched_eeg.info['sfreq']
-        #self.epoch_matrix = epoched_eeg.get_data(picks=['eeg'])
-        #self.n_epochs = len(self.epoch_matrix)
     
     def spec_connectivity(self, measure = 'wpli', frequency_band = None):
         if frequency_band is None:
