@@ -291,7 +291,7 @@ class EEG_SpectralConnection(object):
         """
 
         if frequency_band is None:
-            f_min, f_max = 0, np.inf
+            f_min, f_max = 0.5, np.inf
         else:
             f_min, f_max = frequency_band[0], frequency_band[1]
         
@@ -333,10 +333,10 @@ class EEG_SpectralConnection(object):
         info = self.epoched_eeg.info
         ch_names = self.epoched_eeg.ch_names
 
-        channel_indices = mne.pick_types(info, eeg=True)
-        ch_eeg_names = [ch_names[index] for index in channel_indices]
+        #channel_indices = mne.pick_types(info, eeg=True)
+        #ch_eeg_names = [ch_names[index] for index in channel_indices]
 
-        ch_eeg_names = only_EEG_channels(ch_eeg_names)
+        ch_eeg_names = only_EEG_channels(ch_names)
 
         ax = sns.heatmap(con_matrix, linewidths=.5, cmap='viridis', xticklabels=ch_eeg_names, yticklabels=ch_eeg_names)
 
