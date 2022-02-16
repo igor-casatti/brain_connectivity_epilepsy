@@ -7,7 +7,6 @@ from epoch_connectivity.utils import only_EEG_channels
 import scipy
 import seaborn as sns
 import matplotlib.pyplot as plt
-import statsmodels.tsa.vector_ar.var_model as smvar
 
 class EEG_DirectedConnection(object):
 

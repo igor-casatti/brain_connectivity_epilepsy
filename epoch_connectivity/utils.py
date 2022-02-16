@@ -1,7 +1,7 @@
 def only_EEG_channels(ch_names_list):
     """
-    Given a list of strings (channel names), return a reduced list with the channels
-    with a name beginning with EEG.
+    Given a list of strings (channel names), return a reduced list with the EEG channesl,
+    but withouth the EEG prefix
     """
     reduced_list=[]
     for ch_name in ch_names_list:
