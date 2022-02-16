@@ -2,11 +2,11 @@ import numpy as np
 import mne
 import scot
 import mne_connectivity as mnecon
-from epoch_connectivity.conn_epoch import EpochConnection
 from epoch_connectivity.utils import only_EEG_channels
 import scipy
 import seaborn as sns
 import matplotlib.pyplot as plt
+import pandas as pd
 
 class EEG_DirectedConnection(object):
 
@@ -29,14 +29,21 @@ class EEG_DirectedConnection(object):
     """
 
     def __init__(self, epoched_eeg):
-        self.epoched_eeg = epoched_eeg
-        #self.ch_names = only_EEG_channels(epoched_eeg.ch_names)
-        self.ch_names = epoched_eeg.ch_names
-        self.sfreq = epoched_eeg.info['sfreq']
-        self.info = epoched_eeg.info
 
-        self.epoch_matrix = epoched_eeg.get_data(picks=['eeg'])
+        ordered_channel_names = epoched_eeg.ch_names.copy()
+        ordered_channel_names.sort()
+        self.epoched_eeg = epoched_eeg.reorder_channels(ordered_channel_names)
+
+        channel_indices = mne.pick_types(self.epoched_eeg.info, eeg=True)
+        self.ch_names = [self.epoched_eeg.ch_names[index] for index in channel_indices]
+        self.ch_names = only_EEG_channels(self.ch_names)
+
+        self.sfreq = self.epoched_eeg.info['sfreq']
+        self.info = self.epoched_eeg.info
+
+        self.epoch_matrix = self.epoched_eeg.get_data(picks=['eeg'])
         self.n_epochs = len(self.epoch_matrix)
+
     
     def fit_MVAR_on_epochs(self, model_order=20, epoch_cv_division=5, get_REV = False):
 
@@ -117,6 +124,34 @@ class EEG_DirectedConnection(object):
         REV = MSE/MSS
 
         return REV
+
+    def fit_quality_diagnostic(self):
+        """
+        Return a pandas dataframe containinf the average REV for each epoch
+        table columns: {'REV mean', 'REV std', 'REV max', 'REV min'}.
+        The option get_REV must be set to True on the fitting procedure.
+
+        -----------
+        PARAMETERS
+        -----------
+        epoch_data (numpy array) : Array containing the current epoch subdivided.
+        model_order (int) : Model order used to fit the MVAR model.
+        varx (scot var object) : Var object used in the fitting
+
+        -----------
+        RETURNS
+        -----------
+        
+
+        -----------
+        RETURNS
+        -----------
+        [1] THE ELECTROENCEPHALOGRAM AND THE ADAPTIVE AUTOREGRESSIVE MODEL: THEORY AND APPLICATIONS. Alois Schlögl. pp 18 - 19.
+        """
+        rev = self.REV
+        rev_std, rev_mean, rev_max, rev_min = np.std(rev, axis=1), np.mean(rev, axis=1), np.max(rev, axis=1), np.min(rev, axis=1)
+        quality = {'REV mean':rev_mean, 'REV std':rev_std, 'REV max':rev_max, 'REV min':rev_min}
+        return pd.DataFrame(data=quality)
 
     def integrated_measure_epochs(self, measure_name, frequency_band = None, nfft = None):
         
@@ -199,11 +234,11 @@ class EEG_DirectedConnection(object):
         ch_names = self.ch_names
 
         channel_indices = mne.pick_types(info, eeg=True)
-        ch_eeg_names = [ch_names[index] for index in channel_indices]
+        #ch_eeg_names = [ch_names[index] for index in channel_indices]
 
-        ch_eeg_names = only_EEG_channels(ch_eeg_names)
+        #ch_eeg_names = only_EEG_channels(ch_eeg_names)
 
-        ax = sns.heatmap(con_matrix, linewidths=.5, cmap='viridis', xticklabels=ch_eeg_names, yticklabels=ch_eeg_names)
+        ax = sns.heatmap(con_matrix, linewidths=.5, cmap='viridis', xticklabels=self.ch_names, yticklabels=self.ch_names)
 
         if frequency_band is not None:
             title = measure + ' on frequency range ' + '[' + str(frequency_band[0]) + ', ' + str(frequency_band[1]) + ']'
@@ -234,7 +269,9 @@ class EEG_SpectralConnection(object):
     """
     
     def __init__(self, epoched_eeg):
-        self.epoched_eeg = epoched_eeg
+        ordered_channel_names = epoched_eeg.ch_names.copy()
+        ordered_channel_names.sort()
+        self.epoched_eeg = epoched_eeg.reorder_channels(ordered_channel_names)
     
     def spec_connectivity(self, measure = 'wpli', frequency_band = None):
 
