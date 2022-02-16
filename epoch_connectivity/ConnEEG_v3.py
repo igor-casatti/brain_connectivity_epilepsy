@@ -127,7 +127,7 @@ class EEG_DirectedConnection(object):
         -----------
         PARAMETERS
         -----------
-        measure_name (str) : name of the measure to be used {'dDTF', 'DTF', 'PDC'}
+        measure_name (str) : name of the measure to be used ex. {'dDTF', 'DTF', 'PDC'}
         frequency_band (list) : frequency band where the measure will be integrated if None
           then the measure is integrated over all the frequencies (broadband value) the list
           has the format [lower_bound, higher_bound]
@@ -174,22 +174,21 @@ class EEG_DirectedConnection(object):
     def plot_connectivity_hmp(self, measure = 'dDTF', frequency_band = None, hide_diag = True):
 
         """
-        Plot a heatmap
+        Plot a heatmap of the connectivity measure specified.
 
         -----------
         PARAMETERS
         -----------
-        measure_name (str) : name of the measure to be used {'dDTF', 'DTF', 'PDC'}
+        measure (str) : name of the measure to be used.
         frequency_band (list) : frequency band where the measure will be integrated if None
           then the measure is integrated over all the frequencies (broadband value) the list
           has the format [lower_bound, higher_bound]
-        nfft (int) : number of frequency bins on the metrics resultant matrix if None then
-          nfft = 2 * sfreq
+        hide_diag (bool) : if True hide the diagonal on the plot
 
         -----------
         RETURNS
         -----------
-        connectivity matrix
+        plot
         """
 
         con_matrix = self.integrated_measure_epochs(measure_name=measure, frequency_band = frequency_band)
@@ -239,6 +238,22 @@ class EEG_SpectralConnection(object):
         self.epoched_eeg = epoched_eeg
     
     def spec_connectivity(self, measure = 'wpli', frequency_band = None):
+
+        """
+        Get the spectral connectivity of the epoched EEG.
+
+        -----------
+        PARAMETERS
+        -----------
+        measure (str) : measure to be used
+        frequency_band (list | array) : frequency band specified as [l_frequency, h_frequency]
+
+        -----------
+        RETURNS
+        -----------
+        connectivity matrix
+        """
+
         if frequency_band is None:
             f_min, f_max = 0, np.inf
         else:
@@ -254,8 +269,30 @@ class EEG_SpectralConnection(object):
         # Return the connective matrix just with the EEG channels connectivity
         return con_matrix[np.ix_(channel_indices, channel_indices)]
     
-    def plot_connectivity_hmp(self, measure = 'wpli', frequency_band = None):
+    def plot_connectivity_hmp(self, measure = 'wpli', frequency_band = None, hide_diag = True):
+
+        """
+        Plot a heatmap of the connectivity measure specified.
+
+        -----------
+        PARAMETERS
+        -----------
+        measure (str) : name of the measure to be used.
+        frequency_band (list) : frequency band where the measure will be integrated if None
+          then the measure is integrated over all the frequencies (broadband value) the list
+          has the format [lower_bound, higher_bound]
+        hide_diag (bool) : if True hide the diagonal on the plot
+
+        -----------
+        RETURNS
+        -----------
+        plot
+        """
+
         con_matrix = self.spec_connectivity(measure=measure, frequency_band=frequency_band)
+
+        if hide_diag:
+            np.fill_diagonal(con_matrix, np.nan, wrap=False)
 
         info = self.epoched_eeg.info
         ch_names = self.epoched_eeg.ch_names
