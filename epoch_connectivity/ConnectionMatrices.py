@@ -45,6 +45,21 @@ class ConnectionsMatrices(object):
         eeg_channels_names = only_EEG_channels(self.epoched_eeg.ch_names)
         
         fig = plt.figure(figsize=[h*6.4, v*4.8])
+
+        # To create a common scale to the patient
+        t_max, t_min = 0, 1
+        for i in range(n_plot):
+            f = self.f_bands[i]
+            matrix = to_plot[f].copy()
+            if hide_diag:
+                np.fill_diagonal(matrix, np.nan)
+            a_max, a_min = np.nanmax(matrix), np.nanmin(matrix)
+            if a_max > t_max:
+                t_max = a_max
+            if a_min < t_min:
+                t_min = a_min
+
+
         for i in range(n_plot):
             axes.append(fig.add_subplot(v*100+h*10+i+1))
         plt.subplots_adjust(top=0.90)
@@ -55,7 +70,7 @@ class ConnectionsMatrices(object):
                 np.fill_diagonal(matrix, np.nan)
             #a_max, a_min = np.nanmax(matrix), np.nanmin(matrix)
             sns.heatmap(matrix, linewidth=0.1, cmap='viridis', ax=axes[i],
-                        xticklabels=eeg_channels_names, yticklabels=eeg_channels_names)
+                        xticklabels=eeg_channels_names, yticklabels=eeg_channels_names, vmin=t_min, vmax=t_max)
             axes[i].set_title(f)
         fig.suptitle(measure + ' on patient ' + str(self.patient) + ' while ' + self.rec_status, fontsize=16, y=0.94)
         if savefigure:
