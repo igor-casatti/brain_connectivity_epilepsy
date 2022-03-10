@@ -2,7 +2,7 @@ import numpy as np
 import mne
 import scot
 import mne_connectivity as mnecon
-from epoch_connectivity.utils import only_EEG_channels
+from epoch_connectivity.utils import only_EEG_channels, FrequencyBand
 import scipy
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -44,6 +44,8 @@ class EEG_DirectedConnection(object):
         self.epoch_matrix = self.epoched_eeg.get_data(picks=['eeg'])
         self.n_epochs = len(self.epoch_matrix)
 
+        self.VARs = []
+
     
     def fit_MVAR_on_epochs(self, model_order=20, epoch_cv_division=5, get_REV = False):
 
@@ -77,7 +79,7 @@ class EEG_DirectedConnection(object):
             _, n_samples = np.shape(b)                   # number of samples
             to_remove = n_samples % epoch_cv_division    # number of samples to be removed to make n_samples a multiple of ecd
 
-            b_ = np.delete(b, 1, axis=1)
+            b_ = np.delete(b, to_remove, axis=1)
             b_ = np.array(np.split(b_, epoch_cv_division, axis=1)) # Split the epoch in ecd parts
 
             varx = scot.var.VAR(model_order=model_order)            # MVAR for current epoch
@@ -204,6 +206,73 @@ class EEG_DirectedConnection(object):
         
         integrated_measure = np.array(integrated_measure)
         return np.mean(integrated_measure, axis=0) # Return the mean of the integrated measure over all epochs
+
+    def integrated_measure_epochs_surrogate_tested(self, measures_names, frequency_bands, nfft = None):
+        
+        """
+        Calculate connectivity metrics (the MVAR model must be fitted first)
+
+        -----------
+        PARAMETERS
+        -----------
+        measure_name (str) : name of the measure to be used ex. {'dDTF', 'DTF', 'PDC'}
+        frequency_band (list) : frequency band where the measure will be integrated if None
+          then the measure is integrated over all the frequencies (broadband value) the list
+          has the format [lower_bound, higher_bound]
+        nfft (int) : number of frequency bins on the metrics resultant matrix if None then
+          nfft = 2 * sfreq
+
+        -----------
+        RETURNS
+        -----------
+        connectivity matrix (numpy array) : a matrix of shape (m, m). The first dimension is
+          the sink, the second dimension is the source.
+
+        """
+
+        if nfft is None:
+            nfft = int(2 * self.sfreq)
+        freq_resolution = (self.sfreq/2)/(nfft - 1)
+
+        measures_dict = {}
+        for measure_name in measures_names:
+            measures_dict[measure_name] = []
+
+
+        integrated_measure = []
+        for epoch in range(self.n_epochs):
+            print('epoch: ', epoch)
+            b, rescov = self.coefficients[epoch], self.rescovs[epoch]
+            con = scot.Connectivity(b = b, c = rescov, nfft=nfft)
+            # Get the surrogate connectivity
+            varx = scot.var.VAR(model_order=20)
+            surrogate = scot.connectivity_statistics.surrogate_connectivity(measure_names=measures_names, data=self.epoch_matrix[epoch], var=varx, nfft=nfft, repeats=100, n_jobs=4)
+            # Get the connectivity measure as a function of frequency for the current epoch
+            for measure_name in measures_names:
+                epoch_connec = getattr(con, measure_name)()
+                # Get the 95th percentile of the surrogate distribution
+                percentile = np.percentile(surrogate[measure_name], 95, axis=0)
+                # Any value below the 95th percentile is set as 0, because it is non significative
+                aux = np.clip(epoch_connec-percentile, a_min=0, a_max=None)
+                aux[aux>0] = 1
+                epoch_connec = np.multiply(aux, epoch_connec)
+                measures_dict[measure_name].append(epoch_connec)
+        
+        return_dict = {}
+        for measure_name in measures_names:
+            measures_dict[measure_name] = np.mean(measures_dict[measure_name], axis=0)
+            return_dict[measure_name] = []
+
+        for measure_name in measures_names:
+            f_bands = FrequencyBand()
+            for frequency_band in frequency_bands:
+                f = getattr(f_bands, frequency_band)
+                low, high = f[0], f[1]
+                i, j = int(low/freq_resolution), int(high/freq_resolution)
+                connectivity = measures_dict[measure_name]
+                return_dict[measure_name].append(np.mean(connectivity[:,:,i:j+1], axis=2))
+
+        return return_dict
 
     def plot_connectivity_hmp(self, measure = 'dDTF', frequency_band = None, hide_diag = True):
 
