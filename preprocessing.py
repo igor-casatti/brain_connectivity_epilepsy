@@ -133,61 +133,62 @@ def plot_epoched_eeg(epoched_eeg, events = None):
     else:
         epoched_eeg.plot(picks=['eeg', 'ecg'], scalings=scales)
 
-def fully_preprocess_eeg(patient_number, weaning = False, overwrite = False):
+def fully_preprocess_eeg(patient_number, weaning = False, overwrite = False, export_edf=False):
     """
     fully preprocess and save a copy on the file preprocessed
     """
 
-    def full_cycle(root_directory, patient_number, patient_suffix=None):
-        if patient_suffix is not None:
+    def full_cycle(root_directory, patient_number, patient_suffix=None, weaning=False, export_edf=False):
+        if weaning:
             sleep = root_directory + f"PAT{patient_number}//EEG_SLEEP//{patient_suffix}//"
             awake = root_directory + f"PAT{patient_number}//EEG_AWAKE//{patient_suffix}//"
             save_as = str(patient_number) + '_' + patient_suffix
         else:
             sleep, awake = root_directory + f"PAT{patient_number}//EEG_SLEEP//", root_directory + f"PAT{patient_number}//EEG_AWAKE//"
-            save_as = str(patient_number)
+            save_as = str(patient_number) + '_' + patient_suffix
 
-
-        os.chdir(sleep)
-        for file in glob.glob("*.edf"):
-            patient_sleep = sleep + file
-            print('Penis')
-        for file in glob.glob("*.txt"):
-            patient_sleep_events = sleep + file
-            
         os.chdir(awake)
         for file in glob.glob("*.edf"):
             patient_awake = awake + file
         for file in glob.glob("*.txt"):
             patient_awake_events = awake + file
 
-        a = open_filter_rereference(patient_sleep, patient_sleep_events)
-        b, b_events = make_epoched_data(a)
-        os.chdir(root_directory)
-        b.save(f'preprocessed//PAT{save_as}_SLEEP-epo.fif', overwrite=overwrite)
+        os.chdir(sleep)
+        for file in glob.glob("*.edf"):
+            patient_sleep = sleep + file
+        for file in glob.glob("*.txt"):
+            patient_sleep_events = sleep + file
 
         a = open_filter_rereference(patient_awake, patient_awake_events)
         b, b_events = make_epoched_data(a)
         os.chdir(root_directory)
         b.save(f'preprocessed//PAT{save_as}_AWAKE-epo.fif', overwrite=overwrite)
+        if export_edf:
+            mne.export.export_raw(f'preprocessed_full//PAT{save_as}_AWAKE.edf', raw=a, add_ch_type=True, overwrite=overwrite)
+
+        a = open_filter_rereference(patient_sleep, patient_sleep_events)
+        b, b_events = make_epoched_data(a)
+        os.chdir(root_directory)
+        b.save(f'preprocessed//PAT{save_as}_SLEEP-epo.fif', overwrite=overwrite)
+        if export_edf:
+            mne.export.export_raw(f'preprocessed_full//PAT{save_as}_SLEEP.edf', raw=a, add_ch_type=True, overwrite=overwrite)
 
     root_directory = "C://Users//igorc//OneDrive//Desktop//POLI//UCLouvain//3º Semestre//Thesis//Data//"
 
     if not weaning:
-        full_cycle(root_directory, patient_number)
-
+        full_cycle(root_directory, patient_number, 'H1', False, export_edf)
     else:
-        full_cycle(root_directory, patient_number, 'H1')
-        full_cycle(root_directory, patient_number, 'SEVRAGE')
+        full_cycle(root_directory, patient_number, 'H1', True, export_edf)
+        full_cycle(root_directory, patient_number, 'SEVRAGE', True, export_edf)
 
 def open_preprocessed_epoched(patient_number, weaning = False):
 
     def file_dir(patient_number, status, suffix = None):
         common_dir = "C://Users//igorc//OneDrive//Desktop//POLI//UCLouvain//3º Semestre//Thesis//Data//preprocessed//"
-        if suffix is not None:
-            dir = f'PAT{patient_number}_{suffix}_{status}-epo.fif'
-        else:
-            dir = f'PAT{patient_number}_{status}-epo.fif'
+        #if suffix is not None:
+        dir = f'PAT{patient_number}_{suffix}_{status}-epo.fif' #Tabbed before
+        #else:
+        #    dir = f'PAT{patient_number}_{status}-epo.fif'
         return common_dir+dir
 
     if weaning:
@@ -200,7 +201,7 @@ def open_preprocessed_epoched(patient_number, weaning = False):
     
     else:
         epoched = []
-        a_file, b_file = file_dir(patient_number, status = 'AWAKE'), file_dir(patient_number, status = 'SLEEP')
+        a_file, b_file = file_dir(patient_number, status = 'AWAKE',suffix = 'H1'), file_dir(patient_number, status = 'SLEEP',suffix = 'H1')
         epoched.append(mne.read_epochs(a_file, proj=False, preload=True, verbose=None))
         epoched.append(mne.read_epochs(b_file, proj=False, preload=True, verbose=None))
     
