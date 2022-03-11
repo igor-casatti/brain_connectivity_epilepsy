@@ -82,7 +82,7 @@ class EEG_DirectedConnection(object):
             b_ = np.delete(b, to_remove, axis=1)
             b_ = np.array(np.split(b_, epoch_cv_division, axis=1)) # Split the epoch in ecd parts
 
-            varx = scot.var.VAR(model_order=model_order)            # MVAR for current epoch
+            varx = scot.var.VAR(model_order=model_order, n_jobs=4)            # MVAR for current epoch
             result = scot.varica.mvarica(x=b_, var=varx, reducedim='no_pca', optimize_var=True, varfit='ensemble')
         
             coefficients.append(result.a.coef)        # Append the current coefficients to the coefficients matrix
@@ -155,7 +155,8 @@ class EEG_DirectedConnection(object):
         quality = {'REV mean':rev_mean, 'REV std':rev_std, 'REV max':rev_max, 'REV min':rev_min}
         return pd.DataFrame(data=quality)
 
-    def integrated_measure_epochs(self, measure_name, frequency_band = None, nfft = None):
+
+    def integrated_measure_epochs(self, measures_names, frequency_bands, nfft = None, surrogate_test = True):
         
         """
         Calculate connectivity metrics (the MVAR model must be fitted first)
@@ -164,63 +165,12 @@ class EEG_DirectedConnection(object):
         PARAMETERS
         -----------
         measure_name (str) : name of the measure to be used ex. {'dDTF', 'DTF', 'PDC'}
-        frequency_band (list) : frequency band where the measure will be integrated if None
+        frequency_band (list of strings) : frequency band where the measure will be integrated if None
           then the measure is integrated over all the frequencies (broadband value) the list
-          has the format [lower_bound, higher_bound]
+          has the format ['delta', 'beta', 'theta', 'broadband']
         nfft (int) : number of frequency bins on the metrics resultant matrix if None then
           nfft = 2 * sfreq
-
-        -----------
-        RETURNS
-        -----------
-        connectivity matrix (numpy array) : a matrix of shape (m, m). The first dimension is
-          the sink, the second dimension is the source.
-
-        """
-
-        if nfft is None:
-            nfft = int(2 * self.sfreq)
-
-        freq_resolution = (self.sfreq/2)/(nfft - 1)
-        i, j = 0, nfft
-
-        if frequency_band is not None:
-            low, high = frequency_band[0], frequency_band[1]
-            i, j = int(low/freq_resolution), int(high/freq_resolution)
-
-
-        integrated_measure = []
-        for epoch in range(self.n_epochs):
-            b, rescov = self.coefficients[epoch], self.rescovs[epoch]
-
-            con = scot.Connectivity(b = b, c = rescov, nfft=nfft)
-            # Get the connectivity measure as a function of frequency for the current epoch
-            epoch_connec = getattr(con, measure_name)()
-            # Array containing the frequency intervals
-            x = np.linspace(0, self.sfreq/2, nfft)
-            # Calculate the integrated connectivity measure to the current epoch on the frequency band
-            #integrated_epoch_measure = scipy.integrate.simps(y=epoch_connec[:,:,i:j+1], x=x[i:j+1])
-            integrated_epoch_measure = np.mean(epoch_connec[:,:,i:j+1], axis=2)
-            # Append the current epoch measure to the array containing all the measures
-            integrated_measure.append(integrated_epoch_measure)
-        
-        integrated_measure = np.array(integrated_measure)
-        return np.mean(integrated_measure, axis=0) # Return the mean of the integrated measure over all epochs
-
-    def integrated_measure_epochs_surrogate_tested(self, measures_names, frequency_bands, nfft = None):
-        
-        """
-        Calculate connectivity metrics (the MVAR model must be fitted first)
-
-        -----------
-        PARAMETERS
-        -----------
-        measure_name (str) : name of the measure to be used ex. {'dDTF', 'DTF', 'PDC'}
-        frequency_band (list) : frequency band where the measure will be integrated if None
-          then the measure is integrated over all the frequencies (broadband value) the list
-          has the format [lower_bound, higher_bound]
-        nfft (int) : number of frequency bins on the metrics resultant matrix if None then
-          nfft = 2 * sfreq
+        surrogate_test (boolean) : wheter to perform or not the surrogate data test on the connection metrics
 
         -----------
         RETURNS
@@ -241,21 +191,22 @@ class EEG_DirectedConnection(object):
 
         integrated_measure = []
         for epoch in range(self.n_epochs):
-            print('epoch: ', epoch)
             b, rescov = self.coefficients[epoch], self.rescovs[epoch]
             con = scot.Connectivity(b = b, c = rescov, nfft=nfft)
             # Get the surrogate connectivity
-            varx = scot.var.VAR(model_order=20)
-            surrogate = scot.connectivity_statistics.surrogate_connectivity(measure_names=measures_names, data=self.epoch_matrix[epoch], var=varx, nfft=nfft, repeats=100, n_jobs=4)
+            if surrogate_test:
+                varx = scot.var.VAR(model_order=20)
+                surrogate = scot.connectivity_statistics.surrogate_connectivity(measure_names=measures_names, data=self.epoch_matrix[epoch], var=varx, nfft=nfft, repeats=100, n_jobs=4)
             # Get the connectivity measure as a function of frequency for the current epoch
             for measure_name in measures_names:
                 epoch_connec = getattr(con, measure_name)()
-                # Get the 95th percentile of the surrogate distribution
-                percentile = np.percentile(surrogate[measure_name], 95, axis=0)
-                # Any value below the 95th percentile is set as 0, because it is non significative
-                aux = np.clip(epoch_connec-percentile, a_min=0, a_max=None)
-                aux[aux>0] = 1
-                epoch_connec = np.multiply(aux, epoch_connec)
+                if surrogate_test:
+                    # Get the 95th percentile of the surrogate distribution
+                    percentile = np.percentile(surrogate[measure_name], 95, axis=0)
+                    # Any value below the 95th percentile is set as 0, because it is non significative
+                    aux = np.clip(epoch_connec-percentile, a_min=0, a_max=None)
+                    aux[aux>0] = 1
+                    epoch_connec = np.multiply(aux, epoch_connec)
                 measures_dict[measure_name].append(epoch_connec)
         
         return_dict = {}
