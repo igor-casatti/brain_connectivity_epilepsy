@@ -105,8 +105,9 @@ class Connectomes(object):
         nodes_names = only_EEG_channels(self.CMs.epoched_eeg.ch_names)
         
         networks = {}
-        for f_band in self.CMs.f_bands:
-            networks[f_band] = Connectome(self.adjacency_matrices[f_band], nodes_names)
+        for i in range(len(self.CMs.f_bands)):
+            f_band = self.CMs.f_bands[i]
+            networks[f_band] = Connectome(self.adjacency_matrices[i], nodes_names)
         
         self.networks = networks
             
