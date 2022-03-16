@@ -16,13 +16,27 @@ from epoch_connectivity.utils import FrequencyBand, only_EEG_channels
 import mne_connectivity as mnecon
 
 class Connectome(object):
-    def __init__(self, ConnectionMatrix, channel_names):
+    def __init__(self, ConnectionMatrix, channel_names, thresholding_method=None, threshold=None):
         adjacency_matrix = ConnectionMatrix.copy()
         ch_names = channel_names
         
         #To create the network
         sinks, sources  = np.shape(adjacency_matrix)
         np.fill_diagonal(adjacency_matrix, 0) # no self-loops
+        
+        if thresholding_method is not None:
+
+            if thresholding_method == "density":
+                adjacency_flatten = adjacency_matrix.flatten()
+                to_pick = int(threshold * len(adjacency_flatten))
+                adjacency_flatten.sort()
+                thresh = adjacency_flatten[-to_pick]
+            elif thresholding_method == "absolut":
+                thresh = threshold
+                
+            adjacency_matrix[adjacency_matrix >= thresh] = 1
+            adjacency_matrix[adjacency_matrix < thresh] = 0
+            
         relabel = {}
         for i in range(sinks):
             relabel[i] = ch_names[i]
@@ -98,16 +112,21 @@ class Connectome(object):
     
 
 class Connectomes(object):
-    def __init__(self, PatientConnectionMatrices, measure):
+    def __init__(self, PatientConnectionMatrices, measure, thresholding_method=None, threshold=None):
         self.CMs = PatientConnectionMatrices
         self.measure = measure
         self.adjacency_matrices = getattr(self.CMs, measure)
         nodes_names = only_EEG_channels(self.CMs.epoched_eeg.ch_names)
+        self.is_binary = False
+        
+        if thresholding_method is not None:
+            self.is_binary = True
         
         networks = {}
         for i in range(len(self.CMs.f_bands)):
             f_band = self.CMs.f_bands[i]
-            networks[f_band] = Connectome(self.adjacency_matrices[i], nodes_names)
+            networks[f_band] = Connectome(self.adjacency_matrices[i], nodes_names, thresholding_method=thresholding_method,
+                                          threshold=threshold)
         
         self.networks = networks
             
@@ -195,9 +214,10 @@ class Connectomes(object):
 
             nx.draw_networkx_edges(net_measure_frequency, pos, edgelist=edges, edge_color=weights,
                     width=3, edge_cmap=cmap, ax=axes[i], edge_vmax=max_weight, edge_vmin=min_weight)
-                        
-            norm = mpl.colors.Normalize(vmin=min_weight, vmax=max_weight)
-            fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axes[i], orientation='vertical')
+            
+            if not self.is_binary:                        
+                norm = mpl.colors.Normalize(vmin=min_weight, vmax=max_weight)
+                fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axes[i], orientation='vertical')
     
             axes[i].set_title(f)
         fig.suptitle(self.measure + ' on patient ' + str(self.CMs.patient) + ' while ' + self.CMs.rec_status, fontsize=16, y=0.94)
