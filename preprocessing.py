@@ -207,10 +207,10 @@ def open_preprocessed_epoched(patient_number, weaning = False):
     
     return epoched
 
-def open_raw_eeg(patient_number, weaning = False):
+def open_epoched_eeg(patient_number, weaning = False):
 
     def file_dir(patient_number, status, suffix = None):
-        common_dir = "C://Users//igorc//OneDrive//Desktop//POLI//UCLouvain//3º Semestre//Thesis//Data//"
+        common_dir = "C://Users//igorc//OneDrive//Desktop//POLI//UCLouvain//3º Semestre//Thesis//Data//preprocessed"
         if suffix is not None:
             dir = f'PAT{patient_number}_{suffix}_{status}-epo.fif'
         else:
@@ -227,7 +227,7 @@ def open_raw_eeg(patient_number, weaning = False):
     
     else:
         epoched = []
-        a_file, b_file = file_dir(patient_number, status = 'AWAKE'), file_dir(patient_number, status = 'SLEEP')
+        a_file, b_file = file_dir(patient_number, status = 'AWAKE', suffix = 'H1'), file_dir(patient_number, status = 'SLEEP', suffix = 'H1')
         epoched.append(mne.read_epochs(a_file, proj=False, preload=True, verbose=None))
         epoched.append(mne.read_epochs(b_file, proj=False, preload=True, verbose=None))
     
@@ -249,7 +249,7 @@ def get_path(root_directory, patient_number, patient_suffix=None):
         
     return sleep, awake
     
-def open_raw_eeg(patient_number, weaning = False):
+def open_raw_eeg_filtered(patient_number, weaning = False):
     root = 'C:/Users/igorc/OneDrive/Desktop/POLI/UCLouvain/3º Semestre/Thesis/Data/'
 
     def pre_process_this(eeg):
