@@ -18,7 +18,7 @@ import mne_connectivity as mnecon
 
 class Connectome(object):
     def __init__(self, ConnectionMatrix, channel_names, is_binary, thresholding_method=None, threshold=None):
-        adjacency_matrix = ConnectionMatrix.copy()
+        adjacency_matrix, adj_mtrx_bkp = ConnectionMatrix.copy(), ConnectionMatrix.copy()
         ch_names = channel_names
         self.is_binary = is_binary
         self.weight = 'length'
@@ -29,6 +29,7 @@ class Connectome(object):
         #To create the network
         sinks, sources  = np.shape(adjacency_matrix)
         np.fill_diagonal(adjacency_matrix, 0) # no self-loops
+        np.fill_diagonal(adj_mtrx_bkp, 0)
         
         if thresholding_method is not None:
 
@@ -49,9 +50,13 @@ class Connectome(object):
                     
         network = nx.DiGraph(adjacency_matrix.T)
         network = nx.relabel_nodes(network, relabel, copy=True)
+        if self.is_binary:
+            self.bkp_network = nx.DiGraph(adj_mtrx_bkp.T)
+            self.bkp_network = nx.relabel_nodes(self.bkp_network, relabel, copy=True)
+        
         for edge in network.edges:
             network[edge[0]][edge[1]]['length'] = 1 / network[edge[0]][edge[1]]['weight']
-        
+
         self.network = network
     
     """def modularity(self):
@@ -176,6 +181,8 @@ class Connectomes(object):
             lengths = []
             f = self.CMs.f_bands[i]
             net_measure_frequency = self.networks[f].network
+            if self.is_binary:
+                net_measure_frequency = self.networks[f].bkp_network
             list_of_edges = net_measure_frequency.edges(data=data)
             for u, v, a in list_of_edges:
                 lengths.append(a)
@@ -187,7 +194,10 @@ class Connectomes(object):
                 for edge in list_of_edges:
                     if edge[2] >= limits[0] and edge[2] <= limits[1]:
                         selected.append((edge[0], edge[1]))
-                        selected_weights.append(edge[2])
+                        if self.is_binary:
+                            selected_weights.append(1)
+                        else:
+                            selected_weights.append(edge[2])
             else:
                 if data=='weight':
                     limit = np.quantile(lengths, inv)
@@ -196,7 +206,10 @@ class Connectomes(object):
                 for edge in list_of_edges:
                     if (edge[2] >= limit and data=='weight') or (edge[2] <= limit and data=='length'):
                         selected.append((edge[0], edge[1]))
-                        selected_weights.append(edge[2])
+                        if self.is_binary:
+                            selected_weights.append(1)
+                        else:
+                            selected_weights.append(edge[2])
             all_selected_edges.append(selected)
             all_weights.append(selected_weights)
         
