@@ -58,17 +58,11 @@ class Connectome(object):
             network[edge[0]][edge[1]]['length'] = 1 / network[edge[0]][edge[1]]['weight']
 
         self.network = network
-    
-    """def modularity(self):
-        communities = [{'F3', 'Fp1', 'Fp2', 'F4'}, {'Fz', 'C3', 'Cz', 'C4', 'Pz'}, {'F7', 'T3', 'T5'},
-                      {'F8', 'T4', 'T6'}, {'P3', 'O1', 'O2', 'P4'}]
-        modularity = nx.algorithms.community.modularity(G=self.network, communities=communities, weight='lenght')
-        return modularity"""
 
     def modularity(self):
         network_igraph = ig.Graph.from_networkx(self.network)
         membership = [1, 1, 1, 0, 0, 2, 3, 0, 0, 1, 4, 4, 4, 4, 1, 2, 3, 2, 3]
-        return network_igraph.modularity(membership, weights=self.weight)
+        return network_igraph.modularity(membership, weights='weight')
     
     def optimized_modularity(self):
         communities = nx.algorithms.community.greedy_modularity_communities(G=self.network, weight=self.weight, n_communities=5)
@@ -78,6 +72,10 @@ class Connectome(object):
     def avg_betweenness_centrality(self):
         bc = np.array(list(nx.betweenness_centrality(G=self.network, normalized=True, weight=self.weight, endpoints=False).values()))
         return bc.mean()
+    
+    def global_reaching_centrality(self):
+        grc = nx.global_reaching_centrality(G=self.network, normalized=True, weight='weight')
+        return grc
     
     def global_efficiency_weighted(self):
         n = len(self.network)
@@ -93,10 +91,10 @@ class Connectome(object):
         return g_eff
     
     def degree_assortativity(self):
-        return nx.degree_pearson_correlation_coefficient(G=self.network, weight=self.weight)
+        return nx.degree_pearson_correlation_coefficient(G=self.network, weight='weight')
     
     def avg_clustering_coefficient(self):
-        return nx.average_clustering(G=self.network, weight=self.weight)
+        return nx.average_clustering(G=self.network, weight='weight')
     
 
 class Connectomes(object):
@@ -136,6 +134,12 @@ class Connectomes(object):
         for f_band in self.CMs.f_bands:
             avg_betweenness_centrality[f_band] = self.networks[f_band].avg_betweenness_centrality()
         return avg_betweenness_centrality
+    
+    def global_reaching_centrality(self):
+        global_reaching_centrality = {}
+        for f_band in self.CMs.f_bands:
+            global_reaching_centrality[f_band] = self.networks[f_band].global_reaching_centrality()
+        return global_reaching_centrality
     
     def global_efficiency_weighted(self):
         g_eff = {}
